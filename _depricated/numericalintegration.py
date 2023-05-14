@@ -105,6 +105,8 @@ def plot_alongside(t, h, g, sigma, rho, r, m, mu):
     return None
 
 plot_alongside(T, H, G, SIGMA, RHO, R, M, MU)
+plot_alongside(T, 0.02, G, SIGMA, RHO, R, M, MU)
+plot_alongside(T, 0.2, G, SIGMA, RHO, R, M, MU)
 
 #%%
 def error_difference(t, g, sigma, rho, r, m, mu, h_min, h_max):
