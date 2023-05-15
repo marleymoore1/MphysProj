@@ -20,6 +20,26 @@ be used, in order to apply the elastic forces rapidly, before they have time to
 blow up in size due to overcorrection. This is explained in more detail in the
 accompanying report.
 
+Some typical paramters:
+   # set material properties
+   P = 1190 #material density (kg m^-3)
+   E = 6e9 #3D Young's modulus (N m^-2)
+   NU = 0.35 #Poisson ratio 
+
+   # set fluid properties
+   MU = 1.793e-3 #dynamic viscosity of fluid (kg m^-1 s^-1)
+
+   # set simulation parameters
+   R = 1e-6 #bead radius (m)
+   FvK = 6e6 #Foppl-von Karman number
+
+   r0 = 2*R #rest length of springs (minimum 2R)
+
+   TILT = 0.0 #angle to horizontal in radians (rotation about y-axis)
+   T = 5e-2 #total sedimentation time (s)
+   H = 1e-4 #timestep for numerical integration (s) 
+
+
 The shape progression should then be plotted in your favourite way, but I have
 included a plotting script in the GitHub if that is easier. Because the output
 positions are returned via Pickle dump, it is important to use Pickle to load
@@ -37,11 +57,17 @@ Notes:
     
     This simulation only includes the RPY tensor for non-overlapping beads.
     This can easily be adjusted to account for cases in which the bead
-    separation is allowed to be less than twice the bead radius. See
+    separation is allowed to be less than twice the bead radius. 
+    See:
+        P. J. Zuk, E. Wajnryb, K. A. Mizerski, and P. Szymczak,
+    “Rotne–prager–yamakawa approx- imation for different-sized particles in
+    application to macromolecular bead models,” Journal of Fluid Mechanics,
+    vol. 741, p. R5, 2014
     
     The effects of buoyancy are ignored in this simulation.
     
     The effects of thermal fluctuations are not included in this model.    
+    
     
 """
 #%% IMPORTS
@@ -57,32 +83,53 @@ import pickle
 from FlexibleSheet_helper import unit_cell_bending_force
 
 #%% GLOBAL PARAMETERS
-M = 1e-3 #sheet mass (kg)
-R = 1e-3 #bead radius (m)
+# set material properties
+P = 1190 #material density (kg m^-3)
+E = 6e9 #3D Young's modulus (N m^-2)
+NU = 0.35 #Poisson ratio 
+
+# set fluid properties
+MU = 1.793e-3 #dynamic viscosity of fluid (kg m^-1 s^-1)
+
+# set simulation parameters
+R = 1e-6 #bead radius (m)
+FvK = 1e6 #Foppl-von Karman number
+
 r0 = 2*R #rest length of springs (minimum 2R)
-MU = 1 #dynamic viscosity of fluid (kg m/s)
-E = 0 #3D Young's modulus of material (N/m^2)
-NU = 0.3 #Poisson ratio 
-h = 1e-7 #sheet thickness (m)
 
-TILT = 0.3 #angle to horizontal in radians (rotation about y-axis)
+TILT = 0.0 #angle to horizontal in radians (rotation about y-axis)
+T = 1e-1 #total sedimentation time (s)
+H = 1e-4 #timestep for numerical integration (s) 
 
-T=0.1 #total sedimentation time (s)
-H=0.0001 #timestep for numerical integration (s) (use ~ 10^-4)
-
-# where would you like to save the position data?
-SAVE_DIR = '/Users/marleymoore/Desktop/University of Manchester/Year 4/MPhys Project/Semester 2'
-
+# choose sheet type
 SHEET_TYPE = 'hexagon' #'hexagon' or 'fibre'
+
 if SHEET_TYPE == 'hexagon':
-    EDGE_LENGTH = 15 #number of beads on the hexagon's edge (>1)
+    EDGE_LENGTH = 8 #set number of beads on the hexagon's edge (>1)
+    L = EDGE_LENGTH*r0 #calculate characteristic length scale
     assert EDGE_LENGTH > 1
 elif SHEET_TYPE == 'fibre': #sediment a long, thin fibre
-    FIBRE_LENGTH = 50 #number of beads along the fibre's long edge
-    FIBRE_WIDTH = 3 #number of beads along the width. Should be odd, and > 2
+    FIBRE_LENGTH = 30 #number of beads along the fibre's long edge
+    FIBRE_WIDTH = 5 #number of beads along the width. Should be odd, and > 2.
+    L = FIBRE_LENGTH*r0 #calculate characteristic length scale
     assert FIBRE_WIDTH > 2
 else:
     raise IOError('Only hexagon or fibre options available')
+    
+# where would you like to save the position data?
+SAVE_DIR = '/Users/marleymoore/Desktop/University of Manchester/Year 4/MPhys Project/Semester 2'
+    
+# calculate sheet thickness (m)
+h = L / np.sqrt(FvK*12*(1-NU**2))
+
+# calculate sheet mass - using approximate dimensions as square (1.5L)^2 (kg)
+M = P * h * (1.5*L)**2
+
+# calculate stretching modulus - Swan et al.
+k = (np.sqrt(3)/2) * E * h 
+
+# calculate continuum bending rigidity - Swan et al.
+κ = E*h**3 / (np.sqrt(3) * 12 * (1-NU**2)) 
 
 # scatter plot of initial bead positions
 DIAGRAM_PATH = Path(SAVE_DIR) / 'graphs' / 'initial_lattice_diagram.png'
@@ -212,17 +259,18 @@ def plot_initial_lattice(positions):
     ax, fig = plt.subplots(figsize=(12,12))
     positions = pd.DataFrame(positions, columns=['x','y','z'])
     sns.scatterplot(data=positions, x='x',y='y', color='blue', 
-                    alpha=0.5, s=600)
+                    alpha=0.3, s=1400*(8/EDGE_LENGTH))
     
     # plotting the index of the bead on top of the scatter plot
     for i in positions.index:
         plt.text(positions.loc[i,'x'],
                  positions.loc[i,'y'],
-                 str(i), ha='center', va='center', fontsize='20')
+                 str(i), ha='center', va='center', fontsize=17*(8/EDGE_LENGTH))
         
     plt.axis('equal')
     plt.xlabel('x', fontsize=30)
     plt.ylabel('y', fontsize=30)
+    plt.axis('off')
     
     # save the figure as a png    
     plt.savefig(DIAGRAM_PATH, format='png', dpi=600)
@@ -329,7 +377,8 @@ def spring(A,B):
     Fy = prefactor * AB[1]
     Fz = prefactor * AB[2]
     
-    return -1*np.array([Fx,Fy,Fz])
+    # values are rounded to the 12th decimal place to avoid comulative error
+    return -1*np.around(np.array([Fx,Fy,Fz]),12)
 
 def stretching_force_on_bulk_bead(positions):
     """
@@ -407,9 +456,6 @@ def compute_stretching_forces(positions):
     connectivity, rather than the given positions, and therefore requires the
     initial bead positions and rows as arrays of 3-vectors.
     """
-    # stretching modulus - Swan et al.
-    k = (np.sqrt(3)/2) * E * h 
-    
     if SHEET_TYPE == 'hexagon':
         initial_rows, initial_all_beads = initial_hexagon_positions(edge_length=EDGE_LENGTH)
     
@@ -485,9 +531,6 @@ def compute_bending_forces(positions):
     connectivity, rather than the given positions, and therefore requires the
     initial bead position function to also produce an array of 3-vectors.
     """
-    # continuum bending rigidity - Swan et al.
-    κ = E*h**3 / (np.sqrt(3) * 12 * (1-NU**2)) 
-    
     if SHEET_TYPE == 'hexagon':
         initial_rows, initial_all_beads = initial_hexagon_positions(edge_length=EDGE_LENGTH)
     
@@ -707,13 +750,13 @@ def main():
     # establish lattice
     if SHEET_TYPE == 'hexagon':
         initial_rows, initial_positions = initial_hexagon_positions(edge_length=EDGE_LENGTH)
+        
+        # save setup diagram
+        plot_initial_lattice(initial_positions)
     
     elif SHEET_TYPE == 'fibre':
         initial_rows, initial_positions = initial_fibre_positions(fibre_length=FIBRE_LENGTH,
                                                                   fibre_width=FIBRE_WIDTH)    
-    
-    # save setup diagram
-    plot_initial_lattice(initial_positions)
     
     # applying rotation matrix to positions
     axis = [0, 1, 0] #axis of rotation: y-axis

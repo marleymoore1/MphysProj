@@ -1039,9 +1039,12 @@ def unit_cell_bending_force(I,J,K,L):
     -1 * Iy + Ly ) * ( -1 * Ky + Ly ) * ( -1 * Iz + Lz ) * ( -1 * Kz + Lz \
     ) ) ) ) ) ) ) ) ) )**( -1/2 ) )
     
-    F_I = np.array([ddIx, ddIy, ddIz])
-    F_J = np.array([ddJx, ddJy, ddJz])
-    F_K = np.array([ddKx, ddKy, ddKz])
-    F_L = np.array([ddLx, ddLy, ddLz])
+    # rounding here to the 12th decimal place remove computation errors. This
+    # could potentially be changed to different numbers of decimal places to
+    # increase accuracy of the simulation.                                                                                                
+    F_I = np.around(np.array([ddIx, ddIy, ddIz]),12)
+    F_J = np.around(np.array([ddJx, ddJy, ddJz]),12)
+    F_K = np.around(np.array([ddKx, ddKy, ddKz]),12)
+    F_L = np.around(np.array([ddLx, ddLy, ddLz]),12)    
     
     return -1*np.array([F_I, F_J, F_K, F_L])
